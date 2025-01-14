@@ -30,7 +30,6 @@ class MyHomePage extends StatefulWidget {
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
   // how it looks.
-
   // This class is the configuration for the state. It holds the values (in this
   // case the title) provided by the parent (in this case the App widget) and
   // used by the build method of the State. Fields in a Widget subclass are
@@ -44,7 +43,8 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
 
-  File? _imageFile; 
+  File? _imageFile;
+  late RecognizedText recognizedText;
 
   Future<void> _pickImage() async {
     final pickedFile =
@@ -60,10 +60,18 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _processImage() async {
     final inputImage = InputImage.fromFilePath(_imageFile!.path);
     final textRecognizer = TextRecognizer();
-    final RecognizedText recognizedText = 
+    recognizedText = 
       await textRecognizer.processImage(inputImage);
-    final String extractedText = recognizedText.text;
-    print(extractedText);
+    textRecognizer.close();
+    _printRecognizedText();
+  }
+
+  void _printRecognizedText () {
+    for(TextBlock block in recognizedText.blocks) {
+      print('${block.text},${block.lines.length},${block.boundingBox.left},${block.boundingBox.right},${block.boundingBox.top},${block.boundingBox.bottom}');
+      print('----------------------');
+      //printToConsole('${block.text},${block.lines.length},${block.boundingBox.left},${block.boundingBox.right},${block.boundingBox.top},${block.boundingBox.bottom}');
+    }
   }
 
   @override
@@ -83,9 +91,19 @@ class _MyHomePageState extends State<MyHomePage> {
               ? Text('Select an image to analyze.')
               : Image.file(_imageFile!),
               SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _pickImage,
-                child: Text('Pick image'),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  ElevatedButton(
+                    onPressed: _pickImage,
+                    child: Text('Pick image'),
+                  ),
+                  SizedBox(width: 20),              
+                  ElevatedButton(
+                    onPressed: _printRecognizedText,
+                    child: Text('Print recognized text again'),
+                  ),
+                ],
               ),
             ],
           ),
