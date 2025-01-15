@@ -63,16 +63,124 @@ class _MyHomePageState extends State<MyHomePage> {
     recognizedText = 
       await textRecognizer.processImage(inputImage);
     textRecognizer.close();
-    _printRecognizedText();
+    _resolveRecognizedText();
   }
 
-  void _printRecognizedText () {
+  /* 
+  Hämta all info
+  Bryt ned till rader
+  Hitta punkter för rutnät (alla -TEM samt namn på mätningar), samt mätvärden (nummer samt s,mm,%)
+  
+
+
+
+   */
+
+  void _resolveRecognizedText () {
+
+    var results = <TextLine>[];
+    var ct = <TextLine>[];
+    var a5 = <TextLine>[];
+    var a10 = <TextLine>[];
+    var a20 = <TextLine>[];
+    var mcf = <TextLine>[];
+    var ml = <TextLine>[];
+    var a30 = <TextLine>[];
+    TextLine fibtem;
+    TextLine intem;
+    TextLine extem;
+    TextLine heptem;
+
+    RegExp regExpResults = RegExp(r'^\d{1,3} ?(?:[s%]|m{2}|(?:5(?: |$)))');
+    RegExp regExpCT = RegExp(r'CT');
+    RegExp regExpA5 = RegExp(r'A5');
+    RegExp regExpA10 = RegExp(r'A10');
+    RegExp regExpA20 = RegExp(r'A20');
+    RegExp regExpMCF = RegExp(r'MCF');
+    RegExp regExpML = RegExp(r'ML');
+    RegExp regExpA30 = RegExp(r'A30');
+    RegExp regExpFibtem = RegExp(r'^FIBTEM');
+    RegExp regExpIntem = RegExp(r'^INTEM');
+    RegExp regExpExtem = RegExp(r'^EXTEM');
+    RegExp regExpHeptem = RegExp(r'^HEPTEM');
+
+    int i = 0;
     for(TextBlock block in recognizedText.blocks) {
-      print('${block.text},${block.lines.length},${block.boundingBox.left},${block.boundingBox.right},${block.boundingBox.top},${block.boundingBox.bottom}');
-      print('----------------------');
-      //printToConsole('${block.text},${block.lines.length},${block.boundingBox.left},${block.boundingBox.right},${block.boundingBox.top},${block.boundingBox.bottom}');
+      //print('     Block ${i}');
+      for(TextLine line in  block.lines) {
+        //print('          Text: ${line.text}');
+
+        if (regExpResults.hasMatch(line.text)){
+          results.add(line);
+        } else if (regExpCT.hasMatch(line.text)){
+          ct.add(line);
+        } else if (regExpA5.hasMatch(line.text)){
+          a5.add(line);
+        } else if (regExpA10.hasMatch(line.text)){
+          a10.add(line);
+        } else if (regExpA20.hasMatch(line.text)){
+          a20.add(line);
+        } else if (regExpMCF.hasMatch(line.text)){
+          mcf.add(line);
+        } else if (regExpML.hasMatch(line.text)){
+          ml.add(line);
+        } else if (regExpA30.hasMatch(line.text)){
+          a30.add(line);
+        } else if (regExpFibtem.hasMatch(line.text)){
+          fibtem = line;
+        } else if (regExpIntem.hasMatch(line.text)){
+          intem = line;
+        } else if (regExpExtem.hasMatch(line.text)){
+          extem = line;
+        } else if (regExpHeptem.hasMatch(line.text)){
+          heptem = line;
+        } 
+        else {
+          //print('Släng');
+        }
+      }
+      //i++;
     }
+//
+/*     print('---------------------CT lines------------------------');
+    for (TextLine line in listCT) {
+      print('${line.text},${line.angle},${line.boundingBox.left},${line.boundingBox.right},${line.boundingBox.top},${line.boundingBox.bottom}');
+    } */
+
+/*     print(results);
+    print(results.length); */
+
+
+
+
+
+
+
+
+
+
+
+
+
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +208,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                   SizedBox(width: 20),              
                   ElevatedButton(
-                    onPressed: _printRecognizedText,
+                    onPressed: _resolveRecognizedText,
                     child: Text('Print recognized text again'),
                   ),
                 ],
@@ -112,3 +220,4 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 }
+
