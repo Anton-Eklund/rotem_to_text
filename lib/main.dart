@@ -3,6 +3,8 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
+import 'package:rotem_to_text/rotem.dart';
+
 void main() {
   runApp(const MyApp());
 }
@@ -45,6 +47,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   File? _imageFile;
   late RecognizedText recognizedText;
+  late Rotem rotem;
 
   Future<void> _pickImage() async {
     final pickedFile =
@@ -53,7 +56,6 @@ class _MyHomePageState extends State<MyHomePage> {
       setState(() {
         _imageFile = File(pickedFile.path);
       });
-      _processImage();
     }
   }
 
@@ -63,7 +65,10 @@ class _MyHomePageState extends State<MyHomePage> {
     recognizedText = 
       await textRecognizer.processImage(inputImage);
     textRecognizer.close();
-    _resolveRecognizedText();
+  }
+
+  Future<void> _resolveRotem() async {
+    rotem = Rotem(recognizedText: recognizedText);
   }
 
   /* 
@@ -75,111 +80,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
 
    */
-
-  void _resolveRecognizedText () {
-
-    var results = <TextLine>[];
-    var ct = <TextLine>[];
-    var a5 = <TextLine>[];
-    var a10 = <TextLine>[];
-    var a20 = <TextLine>[];
-    var mcf = <TextLine>[];
-    var ml = <TextLine>[];
-    var a30 = <TextLine>[];
-    TextLine fibtem;
-    TextLine intem;
-    TextLine extem;
-    TextLine heptem;
-
-    RegExp regExpResults = RegExp(r'^\d{1,3} ?(?:[s%]|m{2}|(?:5(?: |$)))');
-    RegExp regExpCT = RegExp(r'CT');
-    RegExp regExpA5 = RegExp(r'A5');
-    RegExp regExpA10 = RegExp(r'A10');
-    RegExp regExpA20 = RegExp(r'A20');
-    RegExp regExpMCF = RegExp(r'MCF');
-    RegExp regExpML = RegExp(r'ML');
-    RegExp regExpA30 = RegExp(r'A30');
-    RegExp regExpFibtem = RegExp(r'^FIBTEM');
-    RegExp regExpIntem = RegExp(r'^INTEM');
-    RegExp regExpExtem = RegExp(r'^EXTEM');
-    RegExp regExpHeptem = RegExp(r'^HEPTEM');
-
-    int i = 0;
-    for(TextBlock block in recognizedText.blocks) {
-      //print('     Block ${i}');
-      for(TextLine line in  block.lines) {
-        //print('          Text: ${line.text}');
-
-        if (regExpResults.hasMatch(line.text)){
-          results.add(line);
-        } else if (regExpCT.hasMatch(line.text)){
-          ct.add(line);
-        } else if (regExpA5.hasMatch(line.text)){
-          a5.add(line);
-        } else if (regExpA10.hasMatch(line.text)){
-          a10.add(line);
-        } else if (regExpA20.hasMatch(line.text)){
-          a20.add(line);
-        } else if (regExpMCF.hasMatch(line.text)){
-          mcf.add(line);
-        } else if (regExpML.hasMatch(line.text)){
-          ml.add(line);
-        } else if (regExpA30.hasMatch(line.text)){
-          a30.add(line);
-        } else if (regExpFibtem.hasMatch(line.text)){
-          fibtem = line;
-        } else if (regExpIntem.hasMatch(line.text)){
-          intem = line;
-        } else if (regExpExtem.hasMatch(line.text)){
-          extem = line;
-        } else if (regExpHeptem.hasMatch(line.text)){
-          heptem = line;
-        } 
-        else {
-          //print('Släng');
-        }
-      }
-      //i++;
-    }
-//
-/*     print('---------------------CT lines------------------------');
-    for (TextLine line in listCT) {
-      print('${line.text},${line.angle},${line.boundingBox.left},${line.boundingBox.right},${line.boundingBox.top},${line.boundingBox.bottom}');
-    } */
-
-/*     print(results);
-    print(results.length); */
-
-
-
-
-
-
-
-
-
-
-
-
-
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
   @override
@@ -208,8 +108,13 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                   SizedBox(width: 20),              
                   ElevatedButton(
-                    onPressed: _resolveRecognizedText,
-                    child: Text('Print recognized text again'),
+                    onPressed: _processImage,
+                    child: Text('Process image'),
+                  ),
+                  SizedBox(width: 20),              
+                  ElevatedButton(
+                    onPressed: _resolveRotem,
+                    child: Text('Resolve ROTEM'),
                   ),
                 ],
               ),
@@ -220,4 +125,3 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 }
-
