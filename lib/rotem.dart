@@ -26,7 +26,7 @@ class Rotem {
   void testMissing(RecognizedText recognizedText) {
     for(TextBlock block in recognizedText.blocks) {
       for(TextLine textLine in block.lines) {
-        if(textLine.text.contains("52")) {
+        if(textLine.text.contains("68")) {
           print(textLine.text);
         }
       }
@@ -134,11 +134,9 @@ class Rotem {
             break;
           }
         }
-        if(matchFound) {
-          break;
+        if(!matchFound) {
+          print('     Text to trash: ${line.text} ');
         }
-        print('     Text: ${line.text}');
-        // print('No match found => Trash');
       }
     }
     //i++;
@@ -147,14 +145,17 @@ class Rotem {
 
   void _allocateVariableOffset () {
     for (Variable variable in _variablesByName.values) {
-      variable._sortInnerPosition();
+      variable._sortOffsets();
+    }
+    for (Variable variable in _variablesByName.values) {
+      variable._setMissingOffsets();
     }
   }
 
 
   void _allocateResults () {
     // Allocate results to their specific analysis and variable
-    final double _dxAnalysisMiddle = (_variablesByPosition[0]!.outerPositions[OuterPositionsEnum.br]!.dx + _variablesByPosition[0]!.outerPositions[OuterPositionsEnum.bl]!.dx)/2;
+    final double _dxAnalysisMiddle = (_variablesByPosition[0]!.variableOffsets[OuterPositionsEnum.br]!.dx + _variablesByPosition[0]!.variableOffsets[OuterPositionsEnum.bl]!.dx)/2;
     Map<OuterPositionsEnum,List<Result>> resultsSortedByAnalysis = {
       OuterPositionsEnum.tl:<Result>[],
       OuterPositionsEnum.bl:<Result>[],
@@ -163,7 +164,7 @@ class Rotem {
     };
     for(Result unsortedResult in _unsortedResults) {
       if(unsortedResult.offset.dx<_dxAnalysisMiddle) {
-        if(unsortedResult.offset.dy<_variablesByPosition[0]!.outerPositions[OuterPositionsEnum.bl]!.dy) {
+        if(unsortedResult.offset.dy<_variablesByPosition[0]!.variableOffsets[OuterPositionsEnum.bl]!.dy) {
           resultsSortedByAnalysis[OuterPositionsEnum.tl]!.add(unsortedResult);
         }
         else {
@@ -171,7 +172,7 @@ class Rotem {
         }   
       }
       else {
-        if(unsortedResult.offset.dy<_variablesByPosition[0]!.outerPositions[OuterPositionsEnum.br]!.dy) {
+        if(unsortedResult.offset.dy<_variablesByPosition[0]!.variableOffsets[OuterPositionsEnum.br]!.dy) {
           resultsSortedByAnalysis[OuterPositionsEnum.tr]!.add(unsortedResult);
         }
         else {
@@ -215,22 +216,21 @@ class Variable {
   final int _variablePosition;
   final List <TextLine> _unsortedVariableTextLines = <TextLine>[];
   late final RegExp regExp;
+  late bool allVariableTextLinesAvailable;
 
-  final Map<OuterPositionsEnum,Offset> outerPositions = {};
+  final Map<OuterPositionsEnum,Offset> variableOffsets = {};
 
   Variable({required this.name, required String regExpString, required int variablePosition}) : _variablePosition = variablePosition {
     regExp = RegExp(regExpString);// Run method
   }
 
   void addTextLine (TextLine textLine) {
+    // Add variableTextLine to unsorted list and check if correct number are present
     _unsortedVariableTextLines.add(textLine);
+    allVariableTextLinesAvailable = _unsortedVariableTextLines.length==Rotem.analysesDefinitions.length;
   }
   
-  void _sortInnerPosition () {
-    if(_unsortedVariableTextLines.length!=4) {
-      print('Too few positions (${_unsortedVariableTextLines.length}) found for variable $name');
-      //throw Error();
-    }
+  void _sortAvailableOffsets () {
     Offset sumOffset = Offset(0,0);
     for (TextLine variableTextLine in _unsortedVariableTextLines) {
       sumOffset += variableTextLine.boundingBox.centerLeft;
@@ -240,20 +240,50 @@ class Variable {
     for (TextLine variable in _unsortedVariableTextLines) {
       if (variable.boundingBox.centerLeft.dx<meanOffset.dx) {
         if (variable.boundingBox.centerLeft.dy<meanOffset.dy) {
-          outerPositions[OuterPositionsEnum.tl] = variable.boundingBox.centerLeft;
+          variableOffsets[OuterPositionsEnum.tl] = variable.boundingBox.centerLeft;
         }
         else {
-          outerPositions[OuterPositionsEnum.bl] = variable.boundingBox.centerLeft;
+          variableOffsets[OuterPositionsEnum.bl] = variable.boundingBox.centerLeft;
         }
       }
       else {
         if (variable.boundingBox.top<meanOffset.dy) {
-          outerPositions[OuterPositionsEnum.tr] = variable.boundingBox.centerLeft;
+          variableOffsets[OuterPositionsEnum.tr] = variable.boundingBox.centerLeft;
         }
         else {
-          outerPositions[OuterPositionsEnum.br] = variable.boundingBox.centerLeft;
+          variableOffsets[OuterPositionsEnum.br] = variable.boundingBox.centerLeft;
         }
       }
+    }
+    if(_unsortedVariableTextLines.length == Rotem.analysesDefinitions.length) {
+      print('Variable $name: All positions found');
+      allVariableTextLinesAvailable = true;
+      //throw Error();
+    }
+    else {
+      print('Variable $name: Too few positions (${_unsortedVariableTextLines.length}) found');
+      allVariableTextLinesAvailable = false;
+    }
+  }
+
+  void _setMissingOffsets () {
+    if (allVariableTextLinesAvailable) {
+      return;
+    }
+    else {
+      for (OuterPositionsEnum outerPosition in OuterPositionsEnum.values) {
+        if (variableOffsets.containsKey(outerPosition)){
+          continue;
+        }
+        else {
+          // Find missing Offset
+
+        }
+      }
+
+
+
+
     }
   }
 }
