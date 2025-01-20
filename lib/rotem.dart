@@ -1,5 +1,3 @@
-import 'dart:ffi';
-
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'dart:ui';
 
@@ -8,11 +6,15 @@ class Rotem {
 
 
   Rotem ({required RecognizedText recognizedText}) {
-    testMissing(recognizedText);
+    //testMissing(recognizedText);
     _initAnalyses();
     _initVariables();
     _resolveRecognizedText(recognizedText);
-    _allocateVariableOffset();
+    if(!_setMainReferencePoints()) {throw Error;}
+    _sortVariableOffsets();
+
+    _constructMissingVariableOffsets();
+  
     _allocateResults();
     // Vad sen?
 
@@ -23,6 +25,7 @@ class Rotem {
  
   }
 
+  // Temp for testing purposes
   void testMissing(RecognizedText recognizedText) {
     for(TextBlock block in recognizedText.blocks) {
       for(TextLine textLine in block.lines) {
@@ -33,20 +36,18 @@ class Rotem {
     }
   }
 
-   
+  // Definition of analyses in list of lists with (0) shorthand, (1) name, (2) regExpString, (3) outerPosition
   static const analysesDefinitions = [
-    // List of Lists with (0) shorthand, (1) name, (2) regExpString, (3) outerPosition
       <dynamic>['fibtem','FIBTEM',r'^FIBTEM', OuterPositionsEnum.tl],
       <dynamic>['intem','INTEM',r'^INTEM',OuterPositionsEnum.bl],
       <dynamic>['extem','EXTEM',r'^EXTEM',OuterPositionsEnum.tr],
       <dynamic>['heptem','HEPTEM',r'^HEPTEM',OuterPositionsEnum.br]  
     ];
   
+  // Init analyses and positions
   late final Map<String, Analysis> analysesByName;
   late final Map<OuterPositionsEnum,Analysis> analysesByPosition;
-  
-  void _initAnalyses () {
-    // Init analyses and positions
+  void _initAnalyses () { 
     analysesByName = {};
     analysesByPosition = {};
     for (List<dynamic> analysisDefinition in analysesDefinitions) {
@@ -56,39 +57,28 @@ class Rotem {
     }
   }
 
-  
-
+  // Definition of variables in list of lists with (0) shorthand, (1) name, (2) regExpString, (3) innerPosition
   static const variablesDefinitions = [
-    // List of Lists with (0) shorthand, (1) name, (2) regExpString, (3) innerPosition
-    <dynamic>['analyses','Analyses',r'^(?:FIB)|(?:IN)|(?:EX)|(?:HEP)TEM',0,null],
-    <dynamic>['rt','Run time',r'^RT: ?\d{2}:\d{2}:\d{2}',1,null],
-    <dynamic>['ct','CT',r'CT',2,'s'],
-    <dynamic>['a5','A5',r'A5',3,'mm'],
-    <dynamic>['a10','A10',r'A10',4,'mm'],
-    <dynamic>['a20','A20',r'A20',5,'mm'],
-    <dynamic>['mcf','MCF',r'MCF',6,'mm'],
-    <dynamic>['ml','ML',r'ML',7,'%'],
-    <dynamic>['a30','A30',r'A30',8,'mm'],
+    <dynamic>['rt','Run time',r'^RT: ?\d{2}:\d{2}:\d{2}',0,'hh:mm:ss'],
+    <dynamic>['ct','CT',r'CT',1,'s'],
+    <dynamic>['a5','A5',r'A5',2,'mm'],
+    <dynamic>['a10','A10',r'A10',3,'mm'],
+    <dynamic>['a20','A20',r'A20',4,'mm'],
+    <dynamic>['mcf','MCF',r'MCF',5,'mm'],
+    <dynamic>['ml','ML',r'ML',6,'%'],
+    <dynamic>['a30','A30',r'A30',7,'mm'],
   ];
 
-  late final Map<String, Variable> _variablesByName;
+  // Init variables according to variableDefinitions
   late final Map<int,Variable> _variablesByPosition;
-  
   void _initVariables () {
-    // Init variables
-    _variablesByName = {};
     _variablesByPosition = {};
     for (List<dynamic> variableDefinition in variablesDefinitions) {
-      final Variable variable = Variable(name: variableDefinition[1], regExpString: variableDefinition[2], variablePosition: variableDefinition[3]);
-      _variablesByName[variableDefinition[0]] = variable;
+      final Variable variable = Variable(name: variableDefinition[1], regExpString: variableDefinition[2], position: variableDefinition[3]);
       _variablesByPosition[variableDefinition[3]] = variable;
     }
   }
 
-  
-  
-  late final List<Result> _unsortedResults;
-  
   // RegExps to match all result lines
   List<RegExp> regExpForResults = [
     RegExp(r'^RT: ?(?<hours>\d{2}):(?<minutes>\d{2}):(?<seconds>\d{2})'),
@@ -96,9 +86,9 @@ class Rotem {
     RegExp(r'^(?<int>\d{1,3}) ?mm'),
     RegExp(r'^(?<int>\d{1,3}) ?%'),
   ];
-  
 
-  // Resolve position of recognized text
+  // Resolve type of recognized text (Result, Variable name or Analysis header) and allocate accordingly
+  late final List<Result> _unsortedResults;
   void _resolveRecognizedText (RecognizedText recognizedText) {
     _unsortedResults = <Result>[];
     // int i = 0;
@@ -126,10 +116,18 @@ class Rotem {
           break;
         } */
         //Else look for variable match
-        for(Variable variable in _variablesByName.values) {
+        for(Variable variable in _variablesByPosition.values) {
           if(variable.regExp.hasMatch(line.text)) {
             //print('          Match found in variables with ${variable.regExp.pattern}');
             variable._unsortedVariableTextLines.add(line);
+            matchFound = true;
+            break;
+          }
+        }
+        for(Analysis analysis in analysesByPosition.values) {
+          if(analysis.regExp.hasMatch(line.text)) {
+            //print('          Match found in variables with ${variable.regExp.pattern}');
+            analysis.analysisHeaderOffset = line.boundingBox.centerLeft;
             matchFound = true;
             break;
           }
@@ -141,42 +139,125 @@ class Rotem {
     }
     //i++;
   }
-
-
-  void _allocateVariableOffset () {
-    for (Variable variable in _variablesByName.values) {
-      variable._sortOffsets();
+  
+  // Set reference offsets for sorting of offsets. Returns false if not possible to set reference.
+  late Map<String,Offset> referenceOffsets;
+  bool _setMainReferencePoints () {
+    referenceOffsets = {};
+    if (analysesByPosition[OuterPositionsEnum.bl]!.analysisHeaderOffset == null ){
+      print('Missing position of ${analysesByPosition[OuterPositionsEnum.bl]!.name} header, which is needed for analysis of ROTEM image');
+      return false;
     }
-    for (Variable variable in _variablesByName.values) {
-      variable._setMissingOffsets();
+    if (analysesByPosition[OuterPositionsEnum.br]!.analysisHeaderOffset == null ){
+      print('Missing position of ${analysesByPosition[OuterPositionsEnum.br]!.name} header, which is needed for analysis of ROTEM image');
+      return false;
+    }
+    referenceOffsets['L'] = analysesByPosition[OuterPositionsEnum.bl]!.analysisHeaderOffset;
+    referenceOffsets['R'] = analysesByPosition[OuterPositionsEnum.br]!.analysisHeaderOffset;
+    referenceOffsets['C'] = (referenceOffsets['L']!+referenceOffsets['R']!)/2;
+    return true;
+  }
+
+  void _sortVariableOffsets () {
+    for(Variable variable in _variablesByPosition.values) {
+      for (TextLine variableTextLine in variable._unsortedVariableTextLines) {
+        if (variableTextLine.boundingBox.centerLeft.dx<referenceOffsets['C']!.dx) {
+          if (variableTextLine.boundingBox.centerLeft.dy<referenceOffsets['L']!.dy) {
+            analysesByPosition[OuterPositionsEnum.tl]!.variableHeaderOffsets[variable] = variableTextLine.boundingBox.centerLeft;
+          }
+          else {
+            analysesByPosition[OuterPositionsEnum.bl]!.variableHeaderOffsets[variable] = variableTextLine.boundingBox.centerLeft;
+          }
+        }
+        else {
+          if (variableTextLine.boundingBox.top<referenceOffsets['R']!.dy) {
+            analysesByPosition[OuterPositionsEnum.tr]!.variableHeaderOffsets[variable] = variableTextLine.boundingBox.centerLeft;
+          }
+          else {
+            analysesByPosition[OuterPositionsEnum.br]!.variableHeaderOffsets[variable] = variableTextLine.boundingBox.centerLeft;
+          }
+        }
+      }
     }
   }
 
-
-  void _allocateResults () {
-    // Allocate results to their specific analysis and variable
-    final double _dxAnalysisMiddle = (_variablesByPosition[0]!.variableOffsets[OuterPositionsEnum.br]!.dx + _variablesByPosition[0]!.variableOffsets[OuterPositionsEnum.bl]!.dx)/2;
-    Map<OuterPositionsEnum,List<Result>> resultsSortedByAnalysis = {
-      OuterPositionsEnum.tl:<Result>[],
-      OuterPositionsEnum.bl:<Result>[],
-      OuterPositionsEnum.tr:<Result>[],
-      OuterPositionsEnum.br:<Result>[]
-    };
-    for(Result unsortedResult in _unsortedResults) {
-      if(unsortedResult.offset.dx<_dxAnalysisMiddle) {
-        if(unsortedResult.offset.dy<_variablesByPosition[0]!.variableOffsets[OuterPositionsEnum.bl]!.dy) {
-          resultsSortedByAnalysis[OuterPositionsEnum.tl]!.add(unsortedResult);
+  // Constructs new variableHeader offsets for missing recognition. Special case for position 0 (RT).
+  void _constructMissingVariableOffsets () {
+    for(Analysis analysis in analysesByPosition.values) {
+      if (analysis.variableHeaderOffsets.length==_variablesByPosition.length) {
+        print('Analysis ${analysis.name}: All positions found');
+        continue;
+      }
+      else {
+        print('Analysis ${analysis.name}: Too few positions (${analysis.variableHeaderOffsets.length}/${_variablesByPosition.length} ) found');
+        List<Variable> toBeCreated = [];
+        dynamic topPivot;
+        dynamic bottomPivot;
+        // Check for position 0 which Offset is irregular
+        if (!analysis.variableHeaderOffsets.containsKey(_variablesByPosition[0])){ 
+          toBeCreated.add(_variablesByPosition[0]!);
+        }
+        for (int position = 1; position<_variablesByPosition.length; position++) {
+          final variable = _variablesByPosition[position]!;
+          if (analysis.variableHeaderOffsets.containsKey(variable)){
+            // Varaiable found. Set as top pivot if still null. Set as last pivot.
+            if(topPivot == null) {
+              topPivot = variable;
+            }
+            else {
+              bottomPivot = variable;
+            }  
+          }
+          else {
+            toBeCreated.add(variable);
+          }
+        }
+        if (bottomPivot == null) {
+          print('Analysis ${analysis.name}: Too few positions (${analysis.variableHeaderOffsets.length}/${_variablesByPosition.length} ) to extrapolate on!');
+          throw Error;
         }
         else {
-          resultsSortedByAnalysis[OuterPositionsEnum.bl]!.add(unsortedResult);
+          final int pivotDistance = bottomPivot.position-topPivot.position;
+          for (Variable variable in toBeCreated) {
+            final int topTargetDistance = variable.position-topPivot.position as int;
+            double quotient = topTargetDistance/pivotDistance;
+            if (variable.position==0) {
+              quotient -= 0.6;
+            }
+            analysis.variableHeaderOffsets[variable] = Offset.lerp(analysis.variableHeaderOffsets[topPivot],analysis.variableHeaderOffsets[bottomPivot],quotient)!;      
+          }
+        }
+      }
+    }
+  }
+  
+
+
+  // Allocate results to their specific analysis
+  late final Map<Analysis,List<Result>> resultsByAnalysis;
+  void _allocateResults () {
+    // Initiate resultsByAnalysis map and add lists for all analyses
+    resultsByAnalysis = {};
+    for(Analysis analysis in analysesByPosition.values) {
+      resultsByAnalysis[analysis]=[];
+    }
+  
+    // Allocate to analaysis by Offset
+    for(Result unsortedResult in _unsortedResults) {
+      if(unsortedResult.offset.dx<referenceOffsets['C']!.dx) {
+        if(unsortedResult.offset.dy<referenceOffsets['L']!.dy) {
+          resultsByAnalysis[analysesByPosition[OuterPositionsEnum.tl]]!.add(unsortedResult);
+        }
+        else {
+          resultsByAnalysis[analysesByPosition[OuterPositionsEnum.bl]]!.add(unsortedResult);
         }   
       }
       else {
-        if(unsortedResult.offset.dy<_variablesByPosition[0]!.variableOffsets[OuterPositionsEnum.br]!.dy) {
-          resultsSortedByAnalysis[OuterPositionsEnum.tr]!.add(unsortedResult);
+        if(unsortedResult.offset.dy<referenceOffsets['R']!.dy) {
+          resultsByAnalysis[analysesByPosition[OuterPositionsEnum.tr]]!.add(unsortedResult);
         }
         else {
-          resultsSortedByAnalysis[OuterPositionsEnum.br]!.add(unsortedResult);
+          resultsByAnalysis[analysesByPosition[OuterPositionsEnum.br]]!.add(unsortedResult);
         }  
       }
     }
@@ -195,97 +276,33 @@ class Analysis {
     regExp = RegExp(regExpString);// Run method
   }
 
+  final String name;
   late final RegExp regExp;
 
-  late final String name;
-  late final double rt;
-  late final int ct;
-  late final int a5;
-  late final int a10;
-  late final int a20;
-  late final int mcf;
-  late final int ml;
-  late final int a30;
+  dynamic analysisHeaderOffset;
+  final Map<Variable,Offset> variableHeaderOffsets = {};
 
-  late final List <TextLine> unsortedResults;
+  late final List <Result> unsortedResults;
+  final Map<Variable,Result> results = {};
 }
 
 class Variable {
 
   final String name;
-  final int _variablePosition;
-  final List <TextLine> _unsortedVariableTextLines = <TextLine>[];
   late final RegExp regExp;
-  late bool allVariableTextLinesAvailable;
+  final int position;
 
-  final Map<OuterPositionsEnum,Offset> variableOffsets = {};
+  final List <TextLine> _unsortedVariableTextLines = <TextLine>[];
 
-  Variable({required this.name, required String regExpString, required int variablePosition}) : _variablePosition = variablePosition {
+  Variable({required this.name, required String regExpString, required this.position}) {
     regExp = RegExp(regExpString);// Run method
   }
 
   void addTextLine (TextLine textLine) {
-    // Add variableTextLine to unsorted list and check if correct number are present
+    // Add variableTextLine to unsorted list
     _unsortedVariableTextLines.add(textLine);
-    allVariableTextLinesAvailable = _unsortedVariableTextLines.length==Rotem.analysesDefinitions.length;
   }
   
-  void _sortAvailableOffsets () {
-    Offset sumOffset = Offset(0,0);
-    for (TextLine variableTextLine in _unsortedVariableTextLines) {
-      sumOffset += variableTextLine.boundingBox.centerLeft;
-    }
-    final Offset meanOffset = sumOffset/4;
-
-    for (TextLine variable in _unsortedVariableTextLines) {
-      if (variable.boundingBox.centerLeft.dx<meanOffset.dx) {
-        if (variable.boundingBox.centerLeft.dy<meanOffset.dy) {
-          variableOffsets[OuterPositionsEnum.tl] = variable.boundingBox.centerLeft;
-        }
-        else {
-          variableOffsets[OuterPositionsEnum.bl] = variable.boundingBox.centerLeft;
-        }
-      }
-      else {
-        if (variable.boundingBox.top<meanOffset.dy) {
-          variableOffsets[OuterPositionsEnum.tr] = variable.boundingBox.centerLeft;
-        }
-        else {
-          variableOffsets[OuterPositionsEnum.br] = variable.boundingBox.centerLeft;
-        }
-      }
-    }
-    if(_unsortedVariableTextLines.length == Rotem.analysesDefinitions.length) {
-      print('Variable $name: All positions found');
-      allVariableTextLinesAvailable = true;
-      //throw Error();
-    }
-    else {
-      print('Variable $name: Too few positions (${_unsortedVariableTextLines.length}) found');
-      allVariableTextLinesAvailable = false;
-    }
-  }
-
-  void _setMissingOffsets () {
-    if (allVariableTextLinesAvailable) {
-      return;
-    }
-    else {
-      for (OuterPositionsEnum outerPosition in OuterPositionsEnum.values) {
-        if (variableOffsets.containsKey(outerPosition)){
-          continue;
-        }
-        else {
-          // Find missing Offset
-
-        }
-      }
-
-
-
-
-    }
-  }
 }
 
 enum OuterPositionsEnum {

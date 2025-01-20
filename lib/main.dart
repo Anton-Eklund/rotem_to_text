@@ -96,25 +96,25 @@ class _MyHomePageState extends State<MyHomePage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               _imageFile == null
-              ? Text('Select an image to analyze.')
+              ? const Text('Select an image to analyze.')
               : Image.file(_imageFile!),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
                   ElevatedButton(
                     onPressed: _pickImage,
-                    child: Text('Pick image'),
+                    child: const Text('Pick image'),
                   ),
-                  SizedBox(width: 20),              
+                  const SizedBox(width: 20),              
                   ElevatedButton(
                     onPressed: _processImage,
-                    child: Text('Process image'),
+                    child: const Text('Process image'),
                   ),
-                  SizedBox(width: 20),              
+                  const SizedBox(width: 20),              
                   ElevatedButton(
                     onPressed: _resolveRotem,
-                    child: Text('Resolve ROTEM'),
+                    child: const Text('Resolve ROTEM'),
                   ),
                 ],
               ),
