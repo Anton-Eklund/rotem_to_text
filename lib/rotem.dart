@@ -16,6 +16,8 @@ class Rotem {
     _constructMissingVariableOffsets();
   
     _allocateResults();
+
+    _printResults();
     // Vad sen?
 
 
@@ -51,7 +53,7 @@ class Rotem {
     analysesByName = {};
     analysesByPosition = {};
     for (List<dynamic> analysisDefinition in analysesDefinitions) {
-      final Analysis analysis = Analysis(name: analysisDefinition[1], regExpString: analysisDefinition[2]);
+      final Analysis analysis = Analysis(name: analysisDefinition[1], regExpString: analysisDefinition[2], outerPositionsEnum: analysisDefinition[3]);
       analysesByName[analysisDefinition[0]] = analysis;
       analysesByPosition[analysisDefinition[3]] = analysis;
     }
@@ -189,7 +191,7 @@ class Rotem {
         continue;
       }
       else {
-        print('Analysis ${analysis.name}: Too few positions (${analysis.variableHeaderOffsets.length}/${_variablesByPosition.length} ) found');
+        print('Analysis ${analysis.name}: Too few positions (${analysis.variableHeaderOffsets.length}/${_variablesByPosition.length}) found');
         List<Variable> toBeCreated = [];
         dynamic topPivot;
         dynamic bottomPivot;
@@ -222,7 +224,7 @@ class Rotem {
             final int topTargetDistance = variable.position-topPivot.position as int;
             double quotient = topTargetDistance/pivotDistance;
             if (variable.position==0) {
-              quotient -= 0.6;
+              quotient -= 0.4;
             }
             analysis.variableHeaderOffsets[variable] = Offset.lerp(analysis.variableHeaderOffsets[topPivot],analysis.variableHeaderOffsets[bottomPivot],quotient)!;      
           }
@@ -231,13 +233,11 @@ class Rotem {
     }
   }
   
-
-
   // Allocate results to their specific analysis
   late final Map<Analysis,List<Result>> resultsByAnalysis;
   void _allocateResults () {
     // Initiate resultsByAnalysis map and add lists for all analyses
-    resultsByAnalysis = {};
+    Map<Analysis,List<Result>> resultsByAnalysis = {};
     for(Analysis analysis in analysesByPosition.values) {
       resultsByAnalysis[analysis]=[];
     }
@@ -261,29 +261,93 @@ class Rotem {
         }  
       }
     }
-    print('Results allocated to each analysis but not to the specific variable');
+
+    for(Analysis analysis in analysesByPosition.values) {
+      //print(analysis.name);
+      //print(resultsByAnalysis[analysis].toString());
+      resultsByAnalysis[analysis]!.sort((a,b) => a.offset.dy.compareTo(b.offset.dy));
+      //print(resultsByAnalysis[analysis].toString());
+      if(resultsByAnalysis[analysis]!.length == analysis.variableHeaderOffsets!.length) {
+        for (MapEntry entry in _variablesByPosition.entries) {
+          analysis.results[entry.value] = resultsByAnalysis[analysis]![entry.key];
+        }
+      }
+      else {
+        // Generate mesh.
+        List<Offset> cutoffOffsets = [];
+        Map<Variable,Offset> horizontalSwitchOffsets = analysesByPosition[analysis.outerPositionsEnum.horizontalSwitch()]!.variableHeaderOffsets;
+        // The estimated distance from a header to the value, divided by the distance from the header to the header of the horizontally switched analysis.
+        late final double distanceQuotient;
+        if (analysis.outerPositionsEnum == OuterPositionsEnum.tl || analysis.outerPositionsEnum == OuterPositionsEnum.bl) {
+          distanceQuotient = 0.2;
+        }
+        else{
+          distanceQuotient = -0.2;
+        }
+        for (int i = 1; i< _variablesByPosition.length; i++) {
+          Variable variableBefore = _variablesByPosition[i-1]!;
+          Variable variableAfter = _variablesByPosition[i]!;
+          Offset meanAnalysisSide = (analysis.variableHeaderOffsets[variableBefore]!+analysis.variableHeaderOffsets[variableAfter]!)/2;
+          Offset meanSwitchedAnalysisSide = (horizontalSwitchOffsets[variableBefore]!+horizontalSwitchOffsets[variableAfter]!)/2;
+          cutoffOffsets.add(Offset.lerp(meanAnalysisSide, meanSwitchedAnalysisSide, distanceQuotient)!);
+        }
+        // Add extra cutoff in end 
+        cutoffOffsets.add(cutoffOffsets.last.translate(0, 100));
+
+        int numberOfResultAllocated = 0;
+        for(int k = 0; k<_variablesByPosition.length; k++) {
+          if(numberOfResultAllocated==resultsByAnalysis[analysis]!.length) {
+            //No more results to allocate
+            break;
+          }
+          if(resultsByAnalysis[analysis]![numberOfResultAllocated].offset.dy<cutoffOffsets[k].dy) {
+            analysis.results[_variablesByPosition[k]!] = resultsByAnalysis[analysis]![numberOfResultAllocated];
+            numberOfResultAllocated++;
+          }   
+        }
+      }
+    }
+   
+    
+
+
+
+
+
   } 
 
 
-
+  void _printResults() {
+    for (Analysis analysis in analysesByPosition.values) {
+      analysis.printAllResults();
+    }
+  }
 
 
 }
 
 class Analysis {
 
-  Analysis({required this.name, required String regExpString}) {
+  Analysis({required this.name, required String regExpString, required this.outerPositionsEnum}) {
     regExp = RegExp(regExpString);// Run method
   }
 
   final String name;
+  final OuterPositionsEnum outerPositionsEnum;
   late final RegExp regExp;
 
   dynamic analysisHeaderOffset;
   final Map<Variable,Offset> variableHeaderOffsets = {};
 
-  late final List <Result> unsortedResults;
   final Map<Variable,Result> results = {};
+
+  void printAllResults() {
+    print(name);
+    for(MapEntry entry in results.entries) {
+      print('   ${entry.key.name}: ${entry.value.toString()}');
+    } 
+    print('');
+  }
 }
 
 class Variable {
@@ -313,22 +377,43 @@ enum OuterPositionsEnum {
 
   final String value;
   const OuterPositionsEnum(this.value);
+
+  OuterPositionsEnum horizontalSwitch() {
+    switch (this) {
+      case tl:
+        return OuterPositionsEnum.tr;
+      case bl:
+        return OuterPositionsEnum.br;
+      case tr:
+        return OuterPositionsEnum.tl;
+      case br:
+        return OuterPositionsEnum.bl;
+      default:
+        return throw Error();    
+    }
+  }
 }
 
 class Result {
-    late final dynamic result;
-    late final Offset offset;
-    Result({required RegExpMatch regExpMatch, required TextLine textLine}) {
-      switch( regExpMatch.groupCount) {
-        case 1:
-          result = int.tryParse(regExpMatch.namedGroup('int')!);
-        case 3:
-          result = Duration(
-            hours: int.parse(regExpMatch.namedGroup('hours')!),
-            minutes: int.parse(regExpMatch.namedGroup('minutes')!), 
-            seconds: int.parse(regExpMatch.namedGroup('seconds')!)
-          );
-      }
-      offset = textLine.boundingBox.centerLeft;
+  late final dynamic result;
+  late final Offset offset;
+  Result({required RegExpMatch regExpMatch, required TextLine textLine}) {
+    switch( regExpMatch.groupCount) {
+      case 1:
+        result = int.tryParse(regExpMatch.namedGroup('int')!);
+      case 3:
+        result = Duration(
+          hours: int.parse(regExpMatch.namedGroup('hours')!),
+          minutes: int.parse(regExpMatch.namedGroup('minutes')!), 
+          seconds: int.parse(regExpMatch.namedGroup('seconds')!)
+        );
     }
+    offset = textLine.boundingBox.centerLeft;
+  }
+
+  @override
+  String toString() {
+    // TODO: implement toString
+    return '$result';
+  }
 }
